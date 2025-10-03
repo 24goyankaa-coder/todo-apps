@@ -1,0 +1,93 @@
+<?php
+require 'database/db.php';
+require 'classes/Todo.php';
+
+$pdo = db_connect();
+
+function fetch_all_todos($pdo) {
+    $stmt = $pdo->query("SELECT * FROM todos ORDER BY due_date ASC, id ASC");
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function fetch_todo($pdo, $id) {
+    $stmt = $pdo->prepare("SELECT * FROM todos WHERE id = ?");
+    $stmt->execute([$id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+$action = $_REQUEST['action'] ?? 'list';
+$successMessage = null;
+$errorMessage = null;
+
+if ($action === 'create' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $description = trim($_POST['description'] ?? '');
+    $due_date = $_POST['due_date'] ?? null;
+    if ($description === '' || $due_date === null) {
+        $errorMessage = "Description and due date are required.";
+    } else {
+        $stmt = $pdo->prepare("INSERT INTO todos (description, due_date, is_completed) VALUES (?, ?, 0)");
+        $stmt->execute([$description, $due_date]);
+        header("Location: index.php");
+        exit;
+    }
+}
+
+if ($action === 'mark' && isset($_GET['id'])) {
+    $id = (int)$_GET['id'];
+    $stmt = $pdo->prepare("UPDATE todos SET is_completed = 1 WHERE id = ?");
+    $stmt->execute([$id]);
+    header("Location: index.php");
+    exit;
+}
+
+if ($action === 'delete' && isset($_GET['id'])) {
+    $id = (int)$_GET['id'];
+    $stmt = $pdo->prepare("DELETE FROM todos WHERE id = ?");
+    $stmt->execute([$id]);
+    header("Location: index.php");
+    exit;
+}
+
+if ($action === 'edit' && isset($_GET['id'])) {
+    $id = (int)$_GET['id'];
+    $todo = fetch_todo($pdo, $id);
+    if (!$todo) {
+        $errorMessage = "Todo not found.";
+    } else {
+        include 'views/header.html';
+        include 'views/edit.php';
+        include 'views/footer.html';
+        exit;
+    }
+}
+
+if ($action === 'update' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id = (int)($_POST['id'] ?? 0);
+    $description = trim($_POST['description'] ?? '');
+    $due_date = $_POST['due_date'] ?? null;
+    if ($id <= 0 || $description === '' || $due_date === null) {
+        $errorMessage = "All fields required.";
+    } else {
+        $stmt = $pdo->prepare("UPDATE todos SET description = ?, due_date = ? WHERE id = ?");
+        $stmt->execute([$description, $due_date, $id]);
+        header("Location: index.php");
+        exit;
+    }
+}
+
+$rows = fetch_all_todos($pdo);
+$todos = [];
+foreach ($rows as $r) {
+    $todo = new Todo($r['description'], $r['due_date'], (bool)$r['is_completed']);
+    $todo->id = $r['id'];
+    $todos[] = $todo;
+}
+
+$today = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+$dueToday = array_filter($todos, function($t) use ($today) {
+    return $t->due_date === $today && !$t->is_completed;
+});
+
+include 'views/header.html';
+include 'views/list.php';
+include 'views/footer.html';
