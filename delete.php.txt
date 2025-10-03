@@ -1,0 +1,8 @@
+<?php
+require 'database/db.php';
+
+$pdo = db_connect();
+$conditions = ['id' => $_GET['id']];
+db_delete($pdo, 'todos', $conditions);
+
+header("Location: index.php");
